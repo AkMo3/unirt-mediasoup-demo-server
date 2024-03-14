@@ -1,0 +1,26 @@
+{
+  "name": "medisoup_demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon app.js",
+    "watch": "watchify public/index.js -o public/bundle.js -v",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "express": "^4.18.3",
+    "httpolyglot": "^0.1.2",
+    "mediasoup": "^3.13.24",
+    "mediasoup-client": "^3.7.6",
+    "socket.io": "^4.7.4",
+    "socket.io-client": "^4.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
