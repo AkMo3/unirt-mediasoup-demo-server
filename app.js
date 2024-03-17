@@ -109,6 +109,40 @@ wss.on("connection", async function connection(socket) {
         });
         socket.send(createWebRtcTransportResponseData);
         break;
+
+      case "transport-connect":
+        console.table({ transportId, dtlsParameters });
+        console.log("dtlsParameters", dtlsParameters);
+        await producerTransport.connect({ dtlsParameters });
+        break;
+
+      case "transport-recv-connect":
+        console.log("DTLS Params: ", dtlsParameters);
+        await consumerTransport.connect({ dtlsParameters });
+        break;
+
+      case "transport-produce":
+        console.log('EVENT: Transport-produce');
+        producer = await producerTransport.produce({
+          kind,
+          rtpParameters,
+        });
+  
+        console.log(
+          "Producer Id: ",
+          producer.id,
+          "Producer Kind: ",
+          producer.kind
+        );
+  
+        producer.on("transportclose", () => {
+          console.log("transport for this producer closed");
+          producer.close();
+        });
+        
+        socket.send(JSON.stringify({type: "transport-produce", data: {id: producer.id}}));
+        break;
+
     }
 
     // console.log({ rtpCapabilities });
@@ -260,8 +294,9 @@ const createWebRtcTransport = async () => {
       iceCandidates: transport.iceCandidates,
       dtlsParameters: transport.dtlsParameters,
     }
-
-    console.log("createWebRtcTransport response: ", params);
+    
+    // console.log("DTLS Parameters: " + JSON.stringify(transport.dtlsParameters));
+    // console.log("createWebRtcTransport response: ", params);
 
     return {params, transport};
   } catch (error) {
