@@ -111,9 +111,8 @@ wss.on("connection", async function connection(socket) {
         break;
 
       case "transport-connect":
-        console.table({ transportId, dtlsParameters });
-        console.log("dtlsParameters", dtlsParameters);
-        await producerTransport.connect({ dtlsParameters });
+        console.table(JSON.stringify(data.dtlsParameters));
+        await producerTransport.connect({ dtlsParameters: data.dtlsParameters });
         break;
 
       case "transport-recv-connect":
