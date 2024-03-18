@@ -111,13 +111,11 @@ wss.on("connection", async function connection(socket) {
         break;
 
       case "transport-connect":
-        console.table(JSON.stringify(data.dtlsParameters));
         await producerTransport.connect({ dtlsParameters: data.dtlsParameters });
         break;
 
       case "transport-recv-connect":
-        console.log("DTLS Params: ", dtlsParameters);
-        await consumerTransport.connect({ dtlsParameters });
+        await consumerTransport.connect({ dtlsParameters: data.dtlsParameters  });
         break;
 
       case "transport-produce":
@@ -142,6 +140,54 @@ wss.on("connection", async function connection(socket) {
         socket.send(JSON.stringify({type: "transport-produce", data: {id: producer.id}}));
         break;
 
+      case "consume":
+        console.log('EVENT: consume');
+        console.log('RtpParameters received: ', data.rtpCapabilities);
+
+        const canConsume = router.canConsume({
+          producerId: producer.id,
+          rtpCapabilities: data.rtpCapabilities,
+        });
+
+        try {
+          if (canConsume) {
+            console.log("creating consumer");
+            consumer = await consumerTransport.consume({
+              producerId: producer.id,
+              rtpCapabilities,
+              paused: true,
+            });
+    
+            consumer.on("transportclose", () => {
+              console.log("transport close from consumer");
+            });
+    
+            consumer.on("producerclose", () => {
+              console.log("producer of consumer closed");
+            });
+    
+            const params = {
+              id: consumer.id,
+              producerId: producer.id,
+              kind: consumer.kind,
+              rtpParameters: consumer.rtpParameters,
+            };
+            
+            socket.send(JSON.stringify({type: "consume", data: {params: params}}));
+          }
+        } catch (error) {
+          console.log(error.message);
+          callback({
+            params: {
+              error: error,
+            },
+          });
+        }
+        break;
+      
+      case "consumer-resume":
+        await consumer.resume();
+        break;
     }
 
     // console.log({ rtpCapabilities });
