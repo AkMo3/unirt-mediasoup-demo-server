@@ -123,8 +123,8 @@ wss.on("connection", async function connection(socket) {
       case "transport-produce":
         console.log('EVENT: Transport-produce');
         producer = await producerTransport.produce({
-          kind,
-          rtpParameters,
+          kind: data.kind,
+          rtpParameters: data.rtpParameters,
         });
   
         console.log(
