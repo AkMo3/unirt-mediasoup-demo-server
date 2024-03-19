@@ -149,12 +149,14 @@ wss.on("connection", async function connection(socket) {
           rtpCapabilities: data.rtpCapabilities,
         });
 
+        console.log("rtpCapabilities", data.rtpCapabilities);
+
         try {
           if (canConsume) {
             console.log("creating consumer");
             consumer = await consumerTransport.consume({
               producerId: producer.id,
-              rtpCapabilities,
+              rtpCapabilities: data.rtpCapabilities,
               paused: true,
             });
     
@@ -172,16 +174,19 @@ wss.on("connection", async function connection(socket) {
               kind: consumer.kind,
               rtpParameters: consumer.rtpParameters,
             };
+
+            console.log("RTP Parameters: ", JSON.stringify(consumer.rtpParameters));
             
             socket.send(JSON.stringify({type: "consume", data: {params: params}}));
           }
         } catch (error) {
           console.log(error.message);
-          callback({
-            params: {
-              error: error,
-            },
-          });
+          socket.send(JSON.stringify({type: "consume", data: {
+            params: { 
+              error: error
+            }
+          }
+        }));
         }
         break;
       
