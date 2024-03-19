@@ -150,7 +150,7 @@ wss.on("connection", async function connection(socket) {
           rtpCapabilities: data.rtpCapabilities,
         });
 
-        console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", can);
+        console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", canConsume);
 
         try {
           if (canConsume) {
