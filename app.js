@@ -62,6 +62,7 @@ const mediaCodecs = [
     kind: "video",
     mimeType: "video/VP8",
     clockRate: 90000,
+    preferredPayloadType: 127,
     parameters: {
       "x-google-start-bitrate": 1000,
     },
@@ -149,7 +150,7 @@ wss.on("connection", async function connection(socket) {
           rtpCapabilities: data.rtpCapabilities,
         });
 
-        console.log("rtpCapabilities", data.rtpCapabilities);
+        console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", can);
 
         try {
           if (canConsume) {
