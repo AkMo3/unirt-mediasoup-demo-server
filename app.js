@@ -137,7 +137,14 @@ wss.on("connection", async function connection(socket) {
           console.log("transport for this producer closed");
           producer.close();
         });
-        
+
+        await producer.enableTraceEvent([ "rtp", "pli" ]);
+
+        producer.on("trace", (trace) =>
+        {
+          console.log("Trace", {trace});
+        });
+
         socket.send(JSON.stringify({type: "transport-produce", data: {id: producer.id}}));
         break;
 
