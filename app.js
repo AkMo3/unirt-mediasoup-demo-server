@@ -143,14 +143,14 @@ wss.on("connection", async function connection(socket) {
 
       case "consume":
         console.log('EVENT: consume');
-        console.log('RtpParameters received: ', data.rtpCapabilities);
+        // console.log('RtpParameters received: ', data.rtpCapabilities);
 
         const canConsume = router.canConsume({
           producerId: producer.id,
           rtpCapabilities: data.rtpCapabilities,
         });
 
-        console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", canConsume);
+        // console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", canConsume);
 
         try {
           if (canConsume) {
@@ -176,7 +176,7 @@ wss.on("connection", async function connection(socket) {
               rtpParameters: consumer.rtpParameters,
             };
 
-            console.log("RTP Parameters: ", JSON.stringify(consumer.rtpParameters));
+            // console.log("RTP Parameters: ", JSON.stringify(consumer.rtpParameters));
             
             socket.send(JSON.stringify({type: "consume", data: {params: params}}));
           }
