@@ -1,6 +1,5 @@
 import express from "express";
-// import https from "httpolyglot";
-import { createServer } from "http";
+import https from "httpolyglot";
 import fs from "fs";
 import path from "path";
 import { WebSocketServer } from "ws";
@@ -27,14 +26,10 @@ app.use("/sfu", express.static(path.join(__dirname, "public")));
 //   console.log("Server is running on port 3000");
 // });
 
-const httpServer = createServer(app);
-httpServer.listen(3001, () => {
-    console.log('listening on port: ' + 3001)
-  });
-
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ port: 8081 });
 
 let worker;
+let router;
 let producerTransport;
 let consumerTransport;
 let producer;
@@ -54,9 +49,9 @@ const createWorker = async () => {
   });
 };
 
-await createWorker();
+createWorker();
 
-const mediaCodecs = [
+const mediaCodecs = [ 
   {
     kind: "audio",
     mimeType: "audio/opus",
@@ -67,20 +62,30 @@ const mediaCodecs = [
     kind: "video",
     mimeType: "video/VP8",
     clockRate: 90000,
+    preferredPayloadType: 127,
     parameters: {
       "x-google-start-bitrate": 1000,
     },
   },
 ];
 
-const router = await worker.createRouter({ mediaCodecs });
-
 wss.on("connection", async function connection(socket) {
+
   let statInt;
   console.log(socket.id);
   socket.emit("connection-success", {
     socketId: socket.id,
   });
+
+  socket.on("disconnect", () => {
+    console.log(`user disconnected with socket id: ${socket.id}`);
+    if (statInt) {
+      clearInterval(statInt);
+      statInt = null;
+    }
+  });
+
+  router = await worker.createRouter({ mediaCodecs });
 
   socket.on("message", async function message(message) {
     console.log("received: %s", message);
@@ -94,7 +99,7 @@ wss.on("connection", async function connection(socket) {
         console.log("getRtpCapabilities: Fetching rtpCapabilities");
         const rtpCapabilitiesResponse = {
           rtpCapabilities: rtpCapabilities,
-        };
+        }
         const responseData = JSON.stringify({
           type: "getRtpCapabilities",
           data: rtpCapabilitiesResponse,
@@ -113,24 +118,20 @@ wss.on("connection", async function connection(socket) {
         break;
 
       case "transport-connect":
-        await producerTransport.connect({
-          dtlsParameters: data.dtlsParameters,
-        });
+        await producerTransport.connect({ dtlsParameters: data.dtlsParameters });
         break;
 
       case "transport-recv-connect":
-        await consumerTransport.connect({
-          dtlsParameters: data.dtlsParameters,
-        });
+        await consumerTransport.connect({ dtlsParameters: data.dtlsParameters  });
         break;
 
       case "transport-produce":
-        console.log("EVENT: Transport-produce");
+        console.log('EVENT: Transport-produce');
         producer = await producerTransport.produce({
           kind: data.kind,
           rtpParameters: data.rtpParameters,
         });
-
+  
         console.log(
           "Producer Id: ",
           producer.id,
@@ -138,35 +139,31 @@ wss.on("connection", async function connection(socket) {
           producer.kind
         );
         console.log("RTP Parameters: " + JSON.stringify(data.rtpParameters));
-
+        
         producer.on("transportclose", () => {
           console.log("transport for this producer closed");
           producer.close();
         });
-
-        await producerTransport.enableTraceEvent(["bwe", "probation"]);
-        producerTransport.on("trace", (trace) => {
-          console.log("Trace", { trace });
+        
+        await producerTransport.enableTraceEvent([ "bwe", "probation" ]);
+        producerTransport.on("trace", (trace) =>
+        {
+          console.log("Trace", {trace});
         });
 
-        socket.send(
-          JSON.stringify({
-            type: "transport-produce",
-            data: { id: producer.id },
-          })
-        );
+        socket.send(JSON.stringify({type: "transport-produce", data: {id: producer.id}}));
         break;
 
       case "consume":
-        console.log("EVENT: consume");
-        console.log('RtpParameters received for consume: ', data.rtpCapabilities);
+        console.log('EVENT: consume');
+        // console.log('RtpParameters received: ', data.rtpCapabilities);
 
         const canConsume = router.canConsume({
           producerId: producer.id,
           rtpCapabilities: data.rtpCapabilities,
         });
 
-        console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", canConsume);
+        // console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", canConsume);
 
         try {
           if (canConsume) {
@@ -176,15 +173,15 @@ wss.on("connection", async function connection(socket) {
               rtpCapabilities: data.rtpCapabilities,
               paused: true,
             });
-
+    
             consumer.on("transportclose", () => {
               console.log("transport close from consumer");
             });
-
+    
             consumer.on("producerclose", () => {
               console.log("producer of consumer closed");
             });
-
+    
             const params = {
               id: consumer.id,
               producerId: producer.id,
@@ -193,26 +190,20 @@ wss.on("connection", async function connection(socket) {
             };
 
             // console.log("RTP Parameters: ", JSON.stringify(consumer.rtpParameters));
-
-            socket.send(
-              JSON.stringify({ type: "consume", data: { params: params } })
-            );
+            
+            socket.send(JSON.stringify({type: "consume", data: {params: params}}));
           }
         } catch (error) {
           console.log(error.message);
-          socket.send(
-            JSON.stringify({
-              type: "consume",
-              data: {
-                params: {
-                  error: error,
-                },
-              },
-            })
-          );
+          socket.send(JSON.stringify({type: "consume", data: {
+            params: { 
+              error: error
+            }
+          }
+        }));
         }
         break;
-
+      
       case "consumer-resume":
         await consumer.resume();
         break;
@@ -232,9 +223,9 @@ wss.on("connection", async function connection(socket) {
   const onCreateWebRtcTransport = async ({ sender }) => {
     console.log(`Is this a sender request? ${sender}`);
 
-    const { params, transport } = await createWebRtcTransport();
+    const {params, transport} = await createWebRtcTransport();
 
-    if (sender) producerTransport = transport;
+    if (sender) producerTransport = transport
     else consumerTransport = transport;
 
     return params;
@@ -242,7 +233,7 @@ wss.on("connection", async function connection(socket) {
 
   socket.on("transport-connect", async ({ transportId, dtlsParameters }) => {
     console.table({ transportId, dtlsParameters });
-    console.log("DTLS PARAMS... ", JSON.stringify(dtlsParameters));
+    console.log('DTLS PARAMS... ', JSON.stringify(dtlsParameters));
 
     await producerTransport.connect({ dtlsParameters });
   });
@@ -366,12 +357,12 @@ const createWebRtcTransport = async () => {
       iceParameters: transport.iceParameters,
       iceCandidates: transport.iceCandidates,
       dtlsParameters: transport.dtlsParameters,
-    };
-
+    }
+    
     console.log("DTLS Parameters: " + JSON.stringify(transport.dtlsParameters));
     // console.log("createWebRtcTransport response: ", params);
 
-    return { params, transport };
+    return {params, transport};
   } catch (error) {
     console.log(error);
     throw error;

@@ -1,34 +1,29 @@
-const io = require("socket.io-client");
 const mediasoupClient = require("mediasoup-client");
 
-const socket = io("/mediasoup");
-
-socket.on("connection-success", (socketId) => {
-  console.log(socketId);
-});
+const socket = new WebSocket("ws://localhost:3001");
 
 let params = {
   encodings: [
     {
-      rid: 'r0',
+      rid: "r0",
       maxBitrate: 100000,
-      scalabilityMode: 'S1T3',
+      scalabilityMode: "S1T3",
     },
     {
-      rid: 'r1',
+      rid: "r1",
       maxBitrate: 300000,
-      scalabilityMode: 'S1T3',
+      scalabilityMode: "S1T3",
     },
     {
-      rid: 'r2',
+      rid: "r2",
       maxBitrate: 900000,
-      scalabilityMode: 'S1T3',
+      scalabilityMode: "S1T3",
     },
   ],
   // https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerCodecOptions
   codecOptions: {
-    videoGoogleStartBitrate: 1000
-  }
+    videoGoogleStartBitrate: 1000,
+  },
 };
 
 let device;
@@ -37,6 +32,94 @@ let producerTransport;
 let consumerTransport;
 let producer;
 let consumer;
+let onProducerIdReceivedCallback;
+
+socket.addEventListener("open", (event) => {
+  console.log("Connection openned");
+});
+
+socket.addEventListener("message", async (event) => {
+  const message = event.data;
+  console.log("received: %s", message);
+
+  const receivedMessage = JSON.parse(message);
+  const content = receivedMessage.data;
+  const type = receivedMessage.type;
+
+  console.log("type: ", type);
+  console.log("content: ", content);
+
+  switch (type) {
+    case "getRtpCapabilities":
+      rtpCapabilities = content.rtpCapabilities;
+      break;
+    case "createWebRtcTransport":
+      const data = content;
+      if (content.error) {
+        console.log(content.error);
+        return;
+      }
+
+      producerTransport = device.createSendTransport(content);
+
+      producerTransport.on(
+        "connect",
+        async ({ dtlsParameters }, callback, errback) => {
+          try {
+            // Signal local dtlsParameters to the server side transport
+            await socket.send(
+              JSON.stringify({
+                type: "transport-connect",
+                data: {
+                  transportId: producerTransport.id,
+                  dtlsParameters: dtlsParameters,
+                },
+              })
+            );
+
+            // Tell the transport that parameters were transmitted
+            callback();
+          } catch (error) {
+            errback(error);
+          }
+        }
+      );
+
+      producerTransport.on("produce", async (parameters, callback, errback) => {
+        console.log(parameters);
+
+        try {
+          await socket.send(
+            JSON.stringify({
+              type: "transport-produce",
+              data: {
+                transportId: producerTransport.id,
+                kind: parameters.kind,
+                rtpParameters: parameters.rtpParameters,
+                appData: parameters.appData,
+              },
+            })
+          );
+
+          onProducerIdReceivedCallback = callback;
+        } catch (err) {
+          errback(err);
+        }
+      });
+      break;
+
+    case "transport-connect":
+      await producerTransport.connect({
+        dtlsParameters: content.dtlsParameters,
+      });
+      break;
+
+    case "transport-produce":
+      const id = content.id;
+      onProducerIdReceivedCallback(id);
+      break;
+  }
+});
 
 const streamSuccess = async (stream) => {
   console.log("streamSuccess: Fetching local stream");
@@ -73,11 +156,7 @@ const getLocalStream = () => {
 
 const getRtpCapabilities = async () => {
   console.log("getRtpCapabilities: Fetching rtpCapabilities");
-  socket.emit("getRtpCapabilities", (data) => {
-    console.log(`Router RTP Capabilities... ${data}`, data);
-
-    rtpCapabilities = data.rtpCapabilities;
-  });
+  socket.send(JSON.stringify({ type: "getRtpCapabilities" }));
 };
 
 const createDevice = async () => {
@@ -96,119 +175,81 @@ const createDevice = async () => {
 };
 
 const createSendTransport = () => {
-  socket.emit("createWebRtcTransport", { sender: true }, ({ params }) => {
-    
-    if (params.error) {
-      console.log(params.error);
-      return;
-    }
-    
-    console.log(params);
-
-    producerTransport = device.createSendTransport(params);
-
-    producerTransport.on(
-      "connect",
-      async ({ dtlsParameters }, callback, errback) => {
-        try {
-          // Signal local dtlsParameters to the server side transport
-          await socket.emit("transport-connect", {
-            transportId: producerTransport.id,
-            dtlsParameters: dtlsParameters,
-          });
-
-          // Tell the transport that parameters were transmitted
-          callback();
-        } catch (error) {
-          errback(error);
-        }
-      }
-    );
-
-    producerTransport.on("produce", async (parameters, callback, errback) => {
-      console.log(parameters);
-
-      try {
-        await socket.emit(
-          "transport-produce",
-          {
-            transportId: producerTransport.id,
-            kind: parameters.kind,
-            rtpParameters: parameters.rtpParameters,
-            appData: parameters.appData,
-          },
-          ({ id }) => {
-            callback({ id });
-          }
-        );
-      } catch (err) {
-        errback(err);
-      }
-    });
-  });
+  socket.send(
+    JSON.stringify({ type: "createWebRtcTransport", data: { sender: true } })
+  );
 };
 
 const connectSendTransport = async () => {
   producer = await producerTransport.produce(params);
-  producer.on('trackended', () => {
-    console.log('track ended');
-  })
+  producer.on("trackended", () => {
+    console.log("track ended");
+  });
 
-  producer.on('transportclose', () => {
-    console.log('transport ended')
-  })
+  producer.on("transportclose", () => {
+    console.log("transport ended");
+  });
 };
 
 const createRecvTransport = async () => {
-  await socket.emit('createWebRtcTransport', {sender: false}, ({params}) => {
-    console.log(params);
+  await socket.emit(
+    "createWebRtcTransport",
+    { sender: false },
+    ({ params }) => {
+      console.log(params);
 
-    if (params.error) {
-      console.log(params.error);
-      return;
+      if (params.error) {
+        console.log(params.error);
+        return;
+      }
+
+      consumerTransport = device.createRecvTransport(params);
+
+      consumerTransport.on(
+        "connect",
+        async ({ dtlsParameters }, callback, errback) => {
+          try {
+            await socket.emit("transport-recv-connect", {
+              transportId: consumerTransport.id,
+              dtlsParameters,
+            });
+
+            callback();
+          } catch (err) {
+            errback(err);
+          }
+        }
+      );
     }
-
-    consumerTransport = device.createRecvTransport(params);
-
-    consumerTransport.on('connect', async ({dtlsParameters}, callback, errback) => {
-      try {
-        await socket.emit('transport-recv-connect', {
-          transportId: consumerTransport.id,
-          dtlsParameters
-        })
-
-        callback();
-      }
-      catch(err) {
-        errback(err);
-      }
-    });
-
-  })
-}
+  );
+};
 
 const connectRecvTransport = async () => {
-  await socket.emit('consume', {rtpCapabilities: device.rtpCapabilities}, async ({params}) => {
-    if (params.error) {
-      console.log('Cannot Consume')
-      return
+  await socket.emit(
+    "consume",
+    { rtpCapabilities: device.rtpCapabilities },
+    async ({ params }) => {
+      if (params.error) {
+        console.log("Cannot Consume");
+        return;
+      }
+
+      console.log(params);
+      consumer = await consumerTransport.consume({
+        id: params.id,
+        producerId: params.producerId,
+        kind: params.kind,
+        rtpParameters: params.rtpParameters,
+      });
+
+      const { track } = consumer;
+
+      const remoteVideo = document.getElementById("remoteVideo");
+      remoteVideo.srcObject = new MediaStream([track]);
+
+      socket.emit("consumer-resume");
     }
-
-    console.log(params)
-    consumer = await consumerTransport.consume({
-      id: params.id,
-      producerId: params.producerId,
-      kind: params.kind,
-      rtpParameters: params.rtpParameters
-    })
-
-    const {track} = consumer;
-
-    const remoteVideo = document.getElementById('remoteVideo');
-    remoteVideo.srcObject = new MediaStream([track]);
-
-    socket.emit('consumer-resume');
-  })
+  );
 };
 
 const btnLocalVideo = document.getElementById("btnLocalVideo");
@@ -230,8 +271,10 @@ const btnConnectSendTransport = document.getElementById(
 );
 btnConnectSendTransport.addEventListener("click", connectSendTransport);
 
-const btnSendRecvTransport = document.getElementById('btnRecvSendTransport');
-btnSendRecvTransport.addEventListener('click', createRecvTransport);
+const btnSendRecvTransport = document.getElementById("btnRecvSendTransport");
+btnSendRecvTransport.addEventListener("click", createRecvTransport);
 
-const btnConnectRecvTransport = document.getElementById('btnConnectRecvTransport');
-btnConnectRecvTransport.addEventListener('click', connectRecvTransport);
+const btnConnectRecvTransport = document.getElementById(
+  "btnConnectRecvTransport"
+);
+btnConnectRecvTransport.addEventListener("click", connectRecvTransport);
