@@ -29,8 +29,8 @@ app.use("/sfu", express.static(path.join(__dirname, "public")));
 
 const httpServer = createServer(app);
 httpServer.listen(3001, () => {
-    console.log('listening on port: ' + 3001)
-  });
+  console.log("listening on port: " + 3001);
+});
 
 const wss = new WebSocketServer({ server: httpServer });
 
@@ -112,6 +112,16 @@ wss.on("connection", async function connection(socket) {
         socket.send(createWebRtcTransportResponseData);
         break;
 
+      case "createRecvWebRtcTransport":
+        console.log("Creating Receiving WebRTC Transport");
+        const dataRecv = await onCreateWebRtcTransport(data);
+        const createRecvWebRtcTransportResponseData = JSON.stringify({
+          type: "createRecvWebRtcTransport",
+          data: dataRecv,
+        });
+        socket.send(createRecvWebRtcTransportResponseData);
+        break;
+
       case "transport-connect":
         await producerTransport.connect({
           dtlsParameters: data.dtlsParameters,
@@ -159,14 +169,22 @@ wss.on("connection", async function connection(socket) {
 
       case "consume":
         console.log("EVENT: consume");
-        console.log('RtpParameters received for consume: ', data.rtpCapabilities);
+        console.log(
+          "RtpParameters received for consume: ",
+          data.rtpCapabilities
+        );
 
         const canConsume = router.canConsume({
           producerId: producer.id,
           rtpCapabilities: data.rtpCapabilities,
         });
 
-        console.log("rtpCapabilities", data.rtpCapabilities, " canConsume: ", canConsume);
+        console.log(
+          "rtpCapabilities",
+          data.rtpCapabilities,
+          " canConsume: ",
+          canConsume
+        );
 
         try {
           if (canConsume) {
@@ -192,7 +210,10 @@ wss.on("connection", async function connection(socket) {
               rtpParameters: consumer.rtpParameters,
             };
 
-            // console.log("RTP Parameters: ", JSON.stringify(consumer.rtpParameters));
+            console.log(
+              "RTP Parameters: ",
+              JSON.stringify(consumer.rtpParameters)
+            );
 
             socket.send(
               JSON.stringify({ type: "consume", data: { params: params } })

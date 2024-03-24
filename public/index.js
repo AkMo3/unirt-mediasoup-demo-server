@@ -118,7 +118,56 @@ socket.addEventListener("message", async (event) => {
       const id = content.id;
       onProducerIdReceivedCallback(id);
       break;
-  }
+
+    case "createRecvWebRtcTransport":
+      console.log(content);
+
+      if (params.error) {
+        console.log(content.error);
+        return;
+      }
+
+      consumerTransport = device.createRecvTransport(content);
+
+      consumerTransport.on(
+        "connect",
+        async ({ dtlsParameters }, callback, errback) => {
+          try {
+            await socket.send(JSON.stringify({type : "transport-recv-connect", data: {
+              transportId: consumerTransport.id,
+              dtlsParameters,
+            }}));
+
+            callback();
+          } catch (err) {
+            errback(err);
+          }
+        }
+      );
+      break;
+
+    case "consume":
+      if (content.error) {
+        console.log("Cannot Consume");
+        return;
+      }
+
+      console.log(content);
+      consumer = await consumerTransport.consume({
+        id: content.params.id,
+        producerId: content.params.producerId,
+        kind: content.params.kind,
+        rtpParameters: content.params.rtpParameters,
+      });
+
+      const { track } = consumer;
+
+      const remoteVideo = document.getElementById("remoteVideo");
+      remoteVideo.srcObject = new MediaStream([track]);
+
+      socket.send(JSON.stringify({type : "consumer-resume"}));
+    }
+  
 });
 
 const streamSuccess = async (stream) => {
@@ -192,64 +241,19 @@ const connectSendTransport = async () => {
 };
 
 const createRecvTransport = async () => {
-  await socket.emit(
-    "createWebRtcTransport",
-    { sender: false },
-    ({ params }) => {
-      console.log(params);
-
-      if (params.error) {
-        console.log(params.error);
-        return;
-      }
-
-      consumerTransport = device.createRecvTransport(params);
-
-      consumerTransport.on(
-        "connect",
-        async ({ dtlsParameters }, callback, errback) => {
-          try {
-            await socket.emit("transport-recv-connect", {
-              transportId: consumerTransport.id,
-              dtlsParameters,
-            });
-
-            callback();
-          } catch (err) {
-            errback(err);
-          }
-        }
-      );
-    }
+  await socket.send(JSON.stringify(
+    {
+      type: "createRecvWebRtcTransport",
+      data: { sender: false }
+    })
   );
 };
 
 const connectRecvTransport = async () => {
-  await socket.emit(
-    "consume",
-    { rtpCapabilities: device.rtpCapabilities },
-    async ({ params }) => {
-      if (params.error) {
-        console.log("Cannot Consume");
-        return;
-      }
-
-      console.log(params);
-      consumer = await consumerTransport.consume({
-        id: params.id,
-        producerId: params.producerId,
-        kind: params.kind,
-        rtpParameters: params.rtpParameters,
-      });
-
-      const { track } = consumer;
-
-      const remoteVideo = document.getElementById("remoteVideo");
-      remoteVideo.srcObject = new MediaStream([track]);
-
-      socket.emit("consumer-resume");
-    }
-  );
+  await socket.send(JSON.stringify({
+    type: "consume",
+    data: { rtpCapabilities: device.rtpCapabilities }
+  }));
 };
 
 const btnLocalVideo = document.getElementById("btnLocalVideo");
