@@ -56,14 +56,14 @@ const createWorker = async () => {
 
 await createWorker();
 
-const mediaCodecs = [
-  {
+const mediaCodecOptions = {
+  audio: {
     kind: "audio",
     mimeType: "audio/opus",
     clockRate: 48000,
     channels: 2,
   },
-  {
+  vp8: {
     kind: "video",
     mimeType: "video/VP8",
     clockRate: 90000,
@@ -71,6 +71,76 @@ const mediaCodecs = [
       "x-google-start-bitrate": 1000,
     },
   },
+  "h264-42e01f": {
+    kind: "video",
+    mimeType: "video/H264",
+    clockRate: 90000,
+    parameters: {
+      "packetization-mode": 1,
+      "profile-level-id": "42e01f",
+      "level-asymmetry-allowed": 1,
+      "x-google-start-bitrate": 3000,
+    },
+    rtcpFeedback: [
+      { type: "nack" },
+      { type: "nack", parameter: "pli" },
+      { type: "ccm", parameter: "fir" },
+      { type: "goog-remb" },
+      { type: "transport-cc" },
+    ],
+  },
+  "h264-4d001f": {
+    kind: "video",
+    mimeType: "video/H264",
+    clockRate: 90000,
+    parameters: {
+      "packetization-mode": 1,
+      "profile-level-id": "4d001f",
+      "level-asymmetry-allowed": 1,
+      "x-google-start-bitrate": 3000,
+    },
+    rtcpFeedback: [
+      { type: "nack" },
+      { type: "nack", parameter: "pli" },
+      { type: "ccm", parameter: "fir" },
+      { type: "goog-remb" },
+      { type: "transport-cc" },
+    ],
+  },
+  "h264-svc": {
+    kind: "video",
+    mimeType: "video/H264-SVC",
+    clockRate: 90000,
+    parameters: {
+      "level-asymmetry-allowed": 1,
+    },
+    rtcpFeedback: [
+      { type: "nack" },
+      { type: "nack", parameter: "pli" },
+      { type: "ccm", parameter: "fir" },
+      { type: "goog-remb" },
+      { type: "transport-cc" },
+    ],
+  },
+  "video/H265": {
+    kind: "video",
+    mimeType: "video/H265",
+    clockRate: 90000,
+    parameters: {
+      "level-asymmetry-allowed": 1,
+    },
+    rtcpFeedback: [
+      { type: "nack" },
+      { type: "nack", parameter: "pli" },
+      { type: "ccm", parameter: "fir" },
+      { type: "goog-remb" },
+      { type: "transport-cc" },
+    ],
+  },
+};
+
+const mediaCodecs = [
+  mediaCodecOptions['audio'], mediaCodecOptions['vp8']
 ];
 
 const router = await worker.createRouter({ mediaCodecs });
@@ -154,11 +224,6 @@ wss.on("connection", async function connection(socket) {
           producer.close();
         });
 
-        await producerTransport.enableTraceEvent(["bwe", "probation"]);
-        producerTransport.on("trace", (trace) => {
-          console.log("Trace", { trace });
-        });
-
         socket.send(
           JSON.stringify({
             type: "transport-produce",
@@ -194,6 +259,14 @@ wss.on("connection", async function connection(socket) {
               rtpCapabilities: data.rtpCapabilities,
               paused: true,
             });
+
+            // await consumerTransport.enableTraceEvent([
+            //   "bwe",
+            //   "probation",
+            // ]);
+            // consumerTransport.on("trace", (trace) => {
+            //   console.log("Sending Video Trace", { trace });
+            // });
 
             consumer.on("transportclose", () => {
               console.log("transport close from consumer");
